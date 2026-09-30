@@ -5,6 +5,7 @@ import type { Config } from '../config.js';
 import type { Database } from '../db/client.js';
 import { confessions } from '../db/schema.js';
 import { authorCredential, hashReplyKey, newReplyKey, ownsPost } from './security.js';
+import { registerDmHandlers } from './dm.js';
 import { confirmationView, decisionBlocks, MAX_TEXT, postView, reactionView, replyView, reviewBlocks, withdrawView } from './views.js';
 function slackError(error: unknown, code: string) {
   return typeof error === 'object' && error !== null && 'data' in error &&
@@ -12,6 +13,7 @@ function slackError(error: unknown, code: string) {
 }
 
 export function registerHandlers(app: App, db: Database, config: Config) {
+  registerDmHandlers(app, db, config);
   const cleared = () => ({ status: 'rejected' as const, text: '', replyKeyHash: null,
     authorHash: null, authorSalt: null, updatedAt: new Date() });
   const published = (channel: string, ts: string) => db.query.confessions.findFirst({

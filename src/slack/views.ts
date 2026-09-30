@@ -17,7 +17,7 @@ export function postView(initialText = ''): ModalView {
         initial_option: { text: plain('Slack account hash'), value: 'account', description: plain('Automatically recognizes this account using a salted hash.') },
         options: [
           { text: plain('Slack account hash'), value: 'account', description: plain('Automatically recognizes this account using a salted hash.') },
-          { text: plain('Private reply key'), value: 'passphrase', description: plain('Requires this account and a generated secret you save.') },
+          { text: plain('Private reply key'), value: 'passphrase', description: plain('Requires this account and a generated secret you save. (more secure)') },
         ] },
     }] };
 }

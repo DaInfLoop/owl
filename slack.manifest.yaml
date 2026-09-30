@@ -1,0 +1,52 @@
+_metadata:
+  major_version: 2
+
+display_information:
+  name: prox3
+  description: Submit confessions to me anonymously
+  background_color: "#1a49d6"
+
+features:
+  bot_user:
+    display_name: prox3
+    always_online: false
+  slash_commands:
+    - command: /prox3
+      url: https://prox3.3kh0.dev/slack/events
+      description: Submit an anonymous confession
+      usage_hint: "[message]"
+      should_escape: true
+    - command: /prox3-self-reject
+      url: https://prox3.3kh0.dev/slack/events
+      description: Withdraw your own confession
+      usage_hint: "<id>"
+      should_escape: false
+    - command: /prox3-revive
+      url: https://prox3.3kh0.dev/slack/events
+      description: Recover pending confessions
+      should_escape: false
+  shortcuts:
+    - name: Reply anonymously
+      type: message
+      callback_id: reply_anon
+      description: Reply as the author of a confession
+    - name: React anonymously
+      type: message
+      callback_id: react_anon
+      description: React anonymously
+
+oauth_config:
+  scopes:
+    bot:
+      - commands
+      - chat:write
+      - reactions:write
+
+settings:
+  interactivity:
+    is_enabled: true
+    request_url: https://prox3.3kh0.dev/slack/events
+    message_menu_options_url: https://prox3.3kh0.dev/slack/events
+  socket_mode_enabled: false
+  token_rotation_enabled: false
+  org_deploy_enabled: true

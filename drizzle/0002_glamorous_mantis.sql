@@ -1,0 +1,1 @@
+ALTER TYPE "public"."confession_status" ADD VALUE 'withdrawing' BEFORE 'rejected';

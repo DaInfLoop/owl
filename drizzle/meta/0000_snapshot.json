@@ -1,0 +1,133 @@
+{
+  "id": "2cd2ef9b-ddf7-4244-841a-04d86ce7601c",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.confessions": {
+      "name": "confessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "confessions_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "submission_id": {
+          "name": "submission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reply_key_hash": {
+          "name": "reply_key_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "post_channel": {
+          "name": "post_channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "review_ts": {
+          "name": "review_ts",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "post_ts": {
+          "name": "post_ts",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "confession_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "confessions_submission_id_unique": {
+          "name": "confessions_submission_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "submission_id"
+          ]
+        },
+        "confessions_reply_key_hash_unique": {
+          "name": "confessions_reply_key_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "reply_key_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.confession_status": {
+      "name": "confession_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "publishing",
+        "accepted",
+        "rejected"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

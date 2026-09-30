@@ -48,7 +48,8 @@ export function reviewBlocks(id: number, text: string): KnownBlock[] {
   return [
     { type: 'section', text: plain(`Anonymous post #${id}\n${text}`) },
     { type: 'actions', elements: [
-      { type: 'button', action_id: 'accept_confession', value: String(id), text: plain('Accept'), style: 'primary' },
+      { type: 'button', action_id: 'accept_confession', value: String(id), text: plain('Post to confessions'), style: 'primary' },
+      { type: 'button', action_id: 'accept_meta', value: String(id), text: plain('Post to #meta') },
       { type: 'button', action_id: 'reject_confession', value: String(id), text: plain('Reject'), style: 'danger' },
     ] },
   ];

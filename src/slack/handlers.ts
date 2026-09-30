@@ -191,15 +191,17 @@ export function registerHandlers(app: App, db: Database, config: Config) {
       .where(eq(confessions.id, confession.id));
   });
 
-  for (const actionId of ['accept_confession', 'reject_confession'] as const) {
+  for (const actionId of ['accept_confession', 'accept_meta', 'reject_confession'] as const) {
     app.action<BlockAction<ButtonAction>>(actionId, async ({ ack, body, action, client, respond }) => {
       await ack();
       if (body.channel?.id !== config.channels.review || !body.message?.ts) return;
       const id = Number(action.value);
       if (!Number.isSafeInteger(id) || id < 1) return;
-      const accepting = actionId === 'accept_confession';
+      const accepting = actionId !== 'reject_confession';
+      const postChannel = actionId === 'accept_meta' ? config.channels.meta : config.channels.post;
       const [confession] = await db.update(confessions)
-        .set({ status: accepting ? 'publishing' : 'rejected', updatedAt: new Date() })
+        .set({ status: accepting ? 'publishing' : 'rejected',
+          ...(accepting ? { postChannel } : {}), updatedAt: new Date() })
         .where(and(eq(confessions.id, id), eq(confessions.status, 'pending'),
           eq(confessions.reviewTs, body.message.ts))).returning();
       if (!confession) {

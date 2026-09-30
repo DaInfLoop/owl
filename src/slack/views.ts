@@ -36,13 +36,25 @@ export function reactionView(channel: string, ts: string, targetTs: string): Mod
 }
 export function confirmationView(id: number, key: string | null): ModalView {
   return { type: 'modal', title: plain('Post submitted'), close: plain('Done'), blocks: [{
-    type: 'section', text: { type: 'mrkdwn', text: `Post *#${id}* is awaiting review.\n\n${key ? `Your private reply key:\n\`${key}\`\n\nSave it now. You will need this key and this Slack account to reply.` : 'Your Slack account will be recognized through its salted hash. No reply key is needed.'}\n\nUse “Reply anonymously” on your approved post to reply.` },
+    type: 'section', text: plain(`Post #${id} is awaiting review.\n\n${key ? `Your private reply key:\n${key}\n\nSave it now. You will need this key and this Slack account to reply.` : 'Your Slack account will be recognized through its salted hash. No reply key is needed.'}\n\nUse “Reply anonymously” on your approved post to reply.`),
   }] };
 }
 export function replyView(channel: string, ts: string): ModalView {
   return { type: 'modal', callback_id: 'reply_anon_view', title: plain('Reply anonymously'),
     private_metadata: JSON.stringify({ channel, ts }), submit: plain('Reply'), close: plain('Cancel'),
     blocks: [key(), input('text', 'Your reply', true)] };
+}
+export function decisionBlocks(id: number, text: string, verdict: 'accepted' | 'rejected', userId: string, revision: number): KnownBlock[] {
+  return [
+    { type: 'section', text: plain(`Anonymous post #${id}\n${text}`) },
+    { type: 'context', elements: [plain(`Post #${id} ${verdict} by ${userId}`)] },
+    { type: 'actions', elements: [
+      { type: 'button', action_id: 'undo_review', value: `${id}:${revision}`, text: plain('Undo decision'),
+        confirm: { title: plain('Undo decision?'), text: plain(verdict === 'accepted'
+          ? 'Delete the published message and return this post to pending review? Existing thread replies may remain.'
+          : 'Return this rejected post to pending review?'), confirm: plain('Undo'), deny: plain('Cancel') } },
+    ] },
+  ];
 }
 export function reviewBlocks(id: number, text: string): KnownBlock[] {
   return [

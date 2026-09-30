@@ -5,7 +5,7 @@ import type { Config } from '../config.js';
 import type { Database } from '../db/client.js';
 import { confessions } from '../db/schema.js';
 import { authorCredential, hashReplyKey, newReplyKey, ownsPost } from './security.js';
-import { confirmationView, MAX_TEXT, postView, reactionView, replyView, reviewBlocks, withdrawView } from './views.js';
+import { confirmationView, decisionBlocks, MAX_TEXT, postView, reactionView, replyView, reviewBlocks, withdrawView } from './views.js';
 function slackError(error: unknown, code: string) {
   return typeof error === 'object' && error !== null && 'data' in error &&
     (error.data as { error?: string } | undefined)?.error === code;
@@ -21,7 +21,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     const post = await db.query.confessions.findFirst({ where: eq(confessions.id, id) });
     if (!post || !ownsPost(post, userId, key)) return false;
     const [claimed] = await db.update(confessions).set({ status: 'withdrawing', updatedAt: new Date() })
-      .where(and(eq(confessions.id, id), inArray(confessions.status, ['pending', 'accepted', 'withdrawing']))).returning();
+      .where(and(eq(confessions.id, id), inArray(confessions.status, ['pending', 'accepted', 'withdrawing', 'rejected']))).returning();
     if (!claimed) return false;
     if (claimed.postTs) {
       try { await client.chat.delete({ channel: claimed.postChannel, ts: claimed.postTs }); }
@@ -48,7 +48,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     }
     try {
       const post = await db.query.confessions.findFirst({ where: eq(confessions.id, id) });
-      if (post?.replyKeyHash && post.status !== 'rejected') {
+      if (post?.replyKeyHash) {
         await client.views.open({ trigger_id: command.trigger_id, view: withdrawView(id) });
         return;
       }
@@ -64,7 +64,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     const key = view.state.values.key?.key?.value?.trim() ?? '';
     const post = Number.isSafeInteger(id) && id > 0
       ? await db.query.confessions.findFirst({ where: eq(confessions.id, id) }) : undefined;
-    if (!post || !ownsPost(post, body.user.id, key) || !['pending', 'accepted', 'withdrawing'].includes(post.status)) {
+    if (!post || !ownsPost(post, body.user.id, key) || !['pending', 'accepted', 'withdrawing', 'rejected'].includes(post.status)) {
       await ack({ response_action: 'errors', errors: { key: 'Use this post’s private key and its original account.' } });
       return;
     }
@@ -202,9 +202,10 @@ export function registerHandlers(app: App, db: Database, config: Config) {
       if (!Number.isSafeInteger(id) || id < 1) return;
       const accepting = actionId !== 'reject_confession';
       const postChannel = actionId === 'accept_meta' ? config.channels.meta : config.channels.post;
+      const reviewedAt = new Date();
       const [confession] = await db.update(confessions)
         .set({ status: accepting ? 'publishing' : 'rejected',
-          ...(accepting ? { postChannel } : {}), updatedAt: new Date() })
+          ...(accepting ? { postChannel } : {}), updatedAt: reviewedAt })
         .where(and(eq(confessions.id, id), eq(confessions.status, 'pending'),
           eq(confessions.reviewTs, body.message.ts))).returning();
       if (!confession) {
@@ -218,20 +219,58 @@ export function registerHandlers(app: App, db: Database, config: Config) {
           unfurl_links: false, unfurl_media: false,
         });
         if (!published.ts) throw new Error('Slack returned no publication timestamp');
-        await db.update(confessions).set({ status: 'accepted', postTs: published.ts, updatedAt: new Date() })
+        await db.update(confessions).set({ status: 'accepted', postTs: published.ts, updatedAt: reviewedAt })
           .where(eq(confessions.id, id));
-      } else {
-        await db.update(confessions).set(cleared()).where(eq(confessions.id, id));
       }
       const verdict = accepting ? 'accepted' : 'rejected';
-      await Promise.all([
-        client.chat.update({ channel: config.channels.review, ts: body.message.ts,
-          text: `Post #${id} ${verdict}`, blocks: [{ type: 'section',
-            text: { type: 'plain_text', text: `Post #${id} ${verdict} by ${body.user.id}` } }] }),
-        client.chat.postMessage({ channel: config.channels.log, text: `Post #${id} ${verdict} by <@${body.user.id}>.` }),
-      ]);
+      await db.transaction(async (tx) => {
+        const [current] = await tx.select().from(confessions).where(and(eq(confessions.id, id),
+          eq(confessions.status, verdict), eq(confessions.updatedAt, reviewedAt))).for('update');
+        if (!current?.text) return; // Do not restore text after an author withdrawal or newer decision.
+        await client.chat.update({ channel: config.channels.review, ts: body.message!.ts,
+          text: `Post #${id} ${verdict}`, blocks: decisionBlocks(id, current.text, verdict, body.user.id, reviewedAt.getTime()) });
+      });
+      await client.chat.postMessage({ channel: config.channels.log, text: `Post #${id} ${verdict} by <@${body.user.id}>.` });
     });
   }
+
+  app.action<BlockAction<ButtonAction>>('undo_review', async ({ ack, body, action, client, respond }) => {
+    await ack();
+    if (body.channel?.id !== config.channels.review || !body.message?.ts) return;
+    const parts = action.value?.split(':') ?? [];
+    if (parts.length !== 2 || !parts.every(part => /^\d+$/.test(part))) return;
+    const [id, revision] = parts.map(Number);
+    if (!Number.isSafeInteger(id) || !id || !Number.isSafeInteger(revision)) return;
+    let undone = false;
+    try {
+      await db.transaction(async (tx) => {
+        const [post] = await tx.select().from(confessions).where(and(eq(confessions.id, id!),
+          eq(confessions.reviewTs, body.message!.ts))).for('update');
+        if (!post || !['accepted', 'rejected'].includes(post.status) || post.updatedAt.getTime() !== revision ||
+          !post.text || (!post.replyKeyHash && (!post.authorHash || !post.authorSalt))) return;
+        if (post.status === 'accepted') {
+          if (!post.postTs) throw new Error('No publication timestamp');
+          try { await client.chat.delete({ channel: post.postChannel, ts: post.postTs }); }
+          catch (error) { if (!slackError(error, 'message_not_found')) throw error; }
+        }
+        await tx.update(confessions).set({ status: 'pending', postTs: null, updatedAt: new Date() })
+          .where(eq(confessions.id, post.id));
+        await client.chat.update({ channel: config.channels.review, ts: body.message!.ts,
+          text: `Anonymous post #${post.id} awaiting review`, blocks: reviewBlocks(post.id, post.text) });
+        undone = true;
+      });
+    } catch {
+      await respond({ response_type: 'ephemeral', replace_original: false,
+        text: 'Undo could not be confirmed. Retry Undo; the published message may already have been removed.' });
+      return;
+    }
+    if (!undone) {
+      await respond({ response_type: 'ephemeral', replace_original: false,
+        text: 'This decision has already changed, or the post was withdrawn. Nothing was undone.' });
+      return;
+    }
+    await client.chat.postMessage({ channel: config.channels.log, text: `Decision for post #${id} undone by <@${body.user.id}>; returned to pending review.` });
+  });
 
   app.shortcut<MessageShortcut>('reply_anon', async ({ ack, shortcut, client }) => {
     await ack();

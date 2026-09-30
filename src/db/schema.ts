@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 
 export const confessionStatus = pgEnum('confession_status', ['pending', 'publishing', 'accepted', 'withdrawing', 'rejected']);
 export const confessions = pgTable('confessions', {
-  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity({ startWith: 40442 }),
   submissionId: text('submission_id').notNull().unique(),
   text: text('text').notNull(),
   replyKeyHash: text('reply_key_hash').unique(),

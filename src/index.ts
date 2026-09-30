@@ -27,7 +27,7 @@ try {
   await database.pool.query('SELECT id FROM confessions LIMIT 0');
   await app.init();
   await app.start(config.port);
-  console.log(`prox3 up and ballin on port ${config.port}`);
+  console.log(`owl up and ballin on port ${config.port}`);
 } catch {
   console.error('shit broke homie');
   await database.pool.end();

@@ -38,12 +38,12 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     return true;
   }
 
-  app.command('/prox3-self-reject', async ({ ack, command, client, respond }) => {
+  app.command('/owl-self-reject', async ({ ack, command, client, respond }) => {
     await ack();
     const s = command.text.trim();
     const id = Number(s);
     if (!/^\d+$/.test(s) || !Number.isSafeInteger(id) || id < 1) {
-      await respond({ response_type: 'ephemeral', text: 'Usage: /prox3-self-reject <id>' });
+      await respond({ response_type: 'ephemeral', text: 'Usage: /owl-self-reject <id>' });
       return;
     }
     try {
@@ -73,10 +73,10 @@ export function registerHandlers(app: App, db: Database, config: Config) {
   });
 
   // Explicit moderator recovery, one bounded batch per invocation.
-  app.command('/prox3-revive', async ({ ack, command, client, respond }) => {
+  app.command('/owl-revive', async ({ ack, command, client, respond }) => {
     await ack();
     if (command.channel_id !== config.channels.review) {
-      await respond({ response_type: 'ephemeral', text: 'Run /prox3-revive in the review channel.' });
+      await respond({ response_type: 'ephemeral', text: 'Run /owl-revive in the review channel.' });
       return;
     }
     const rows = await db.select({ id: confessions.id }).from(confessions)
@@ -144,12 +144,12 @@ export function registerHandlers(app: App, db: Database, config: Config) {
       }
     }
   });
-  app.command('/prox3', async ({ ack, command, client, respond }) => {
+  app.command('/owl', async ({ ack, command, client, respond }) => {
     await ack();
     try {
       await client.views.open({ trigger_id: command.trigger_id, view: postView(command.text.trim()) });
     } catch {
-      await respond({ response_type: 'ephemeral', text: 'Could not open the form. Please try /prox3 again.' });
+      await respond({ response_type: 'ephemeral', text: 'Could not open the form. Please try /owl again.' });
     }
   });
 

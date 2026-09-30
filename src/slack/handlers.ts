@@ -148,7 +148,10 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     await ack();
     try {
       await client.views.open({ trigger_id: command.trigger_id, view: postView(command.text.trim()) });
-    } catch {
+    } catch (error) {
+      const data = typeof error === 'object' && error !== null && 'data' in error
+        ? error.data as { error?: unknown } : undefined;
+      console.error('owl form open failed:', typeof data?.error === 'string' ? data.error : 'unknown_error');
       await respond({ response_type: 'ephemeral', text: 'Could not open the form. Please try /owl again.' });
     }
   });

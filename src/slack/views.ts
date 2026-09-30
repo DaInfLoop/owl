@@ -14,7 +14,7 @@ export function postView(initialText = ''): ModalView {
         ...(initialText ? { initial_value: initialText.slice(0, MAX_TEXT) } : {}) } }, {
       type: 'input', block_id: 'ownership', label: plain('How should we recognize your replies?'),
       element: { type: 'radio_buttons', action_id: 'mode',
-        initial_option: { text: plain('Slack account hash'), value: 'account' },
+        initial_option: { text: plain('Slack account hash'), value: 'account', description: plain('Automatically recognizes this account using a salted hash.') },
         options: [
           { text: plain('Slack account hash'), value: 'account', description: plain('Automatically recognizes this account using a salted hash.') },
           { text: plain('Private reply key'), value: 'passphrase', description: plain('Requires this account and a generated secret you save.') },

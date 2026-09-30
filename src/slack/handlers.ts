@@ -74,7 +74,6 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     await withdraw(id, body.user.id, key, client);
   });
 
-  // Explicit moderator recovery, one bounded batch per invocation.
   app.command('/owl-revive', async ({ ack, command, client, respond }) => {
     await ack();
     if (command.channel_id !== config.channels.review) {
@@ -182,7 +181,6 @@ export function registerHandlers(app: App, db: Database, config: Config) {
       return;
     }
     if (!confession) {
-      // A retried submission must not enqueue a second review or expose a new, invalid key.
       await ack({ response_action: 'clear' });
       return;
     }
@@ -228,7 +226,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
       await db.transaction(async (tx) => {
         const [current] = await tx.select().from(confessions).where(and(eq(confessions.id, id),
           eq(confessions.status, verdict), eq(confessions.updatedAt, reviewedAt))).for('update');
-        if (!current?.text) return; // Do not restore text after an author withdrawal or newer decision.
+        if (!current?.text) return;
         await client.chat.update({ channel: config.channels.review, ts: body.message!.ts,
           text: `Post #${id} ${verdict}`, blocks: decisionBlocks(id, current.text, verdict, body.user.id, reviewedAt.getTime()) });
       });

@@ -16,7 +16,7 @@ export function dmPrompt(text: string, user: string, channel: string, ts: string
   const signature = digest(secret, 'dm-submission', [user, channel, ts, text]);
   return [
     { type: 'section', text: plain('Do you want to submit this confession for review?') },
-    { type: 'section', text: plain(text) },
+    { type: 'rich_text', elements: [{ type: 'rich_text_quote', elements: [{ type: 'text', text }] }] },
     { type: 'actions', block_id: 'dm_ownership', elements: [{ type: 'checkboxes', action_id: 'dm_passphrase', options: [
       { text: plain('Use a private reply key (passphrase option)'), value: 'passphrase',
         description: plain('Requires this account and a generated secret you save. Leave unchecked for an account hash.') },
@@ -30,19 +30,26 @@ export function registerDmHandlers(app: App, db: Database, config: Config) {
   app.event('message', async ({ event, client }) => {
     if (event.channel_type !== 'im' || event.subtype || !('user' in event) || !event.user || 'bot_id' in event) return;
     const text = ('text' in event ? event.text : '')?.trim() ?? '';
+    const thread_ts = ('thread_ts' in event ? event.thread_ts : undefined) ?? event.ts;
     if (!text || text.length > MAX_TEXT) {
-      await client.chat.postMessage({ channel: event.channel, text: `Send a text confession between 1 and ${MAX_TEXT} characters. Attachments are not submitted.` });
+      await client.chat.postMessage({ channel: event.channel, thread_ts, text: `Send a text confession between 1 and ${MAX_TEXT} characters. Attachments are not submitted.` });
       return;
     }
-    await client.chat.postMessage({ channel: event.channel, text: 'Do you want to submit this confession for review?',
+    await client.chat.postMessage({ channel: event.channel, thread_ts, text: 'Do you want to submit this confession for review?',
       blocks: dmPrompt(text, event.user, event.channel, event.ts, config.signingSecret),
       unfurl_links: false, unfurl_media: false });
   });
   app.action('dm_passphrase', async ({ ack }) => { await ack(); });
-  app.action<BlockAction<ButtonAction>>('dm_submit', async ({ ack, body, action, client, respond }) => {
+  app.action<BlockAction<ButtonAction>>('dm_submit', async ({ ack, body, action, client }) => {
     await ack();
-    const preview = body.message?.blocks?.[1];
-    const text = preview?.type === 'section' && preview.text?.type === 'plain_text' ? preview.text.text : '';
+    if (!body.channel?.id.startsWith('D') || !body.message?.ts) return;
+    const reply = (text: string) => client.chat.postMessage({ channel: body.channel!.id,
+      thread_ts: body.message!.thread_ts ?? body.message!.ts, text });
+    const preview = body.message.blocks?.[1];
+    const quote = preview?.type === 'rich_text' && preview.elements.length === 1 ? preview.elements[0] : undefined;
+    const quotedText = quote?.type === 'rich_text_quote' && quote.elements.length === 1 ? quote.elements[0] : undefined;
+    const text = quotedText?.type === 'text' ? quotedText.text
+      : preview?.type === 'section' && preview.text?.type === 'plain_text' ? preview.text.text : '';
     let context: { user: string; channel: string; ts: string; signature: string };
     try {
       context = JSON.parse(action.value ?? '');
@@ -51,12 +58,10 @@ export function registerDmHandlers(app: App, db: Database, config: Config) {
         !body.message?.ts || !text || text.length > MAX_TEXT ||
         !matchesHash(context.signature, digest(config.signingSecret, 'dm-submission', [context.user, context.channel, context.ts, text]))) throw new Error('Invalid prompt');
     } catch {
-      await respond({ replace_original: false, text: 'This confirmation is invalid. Send your confession to me again.' });
+      await reply('This confirmation is invalid. Send your confession to me again.');
       return;
     }
-    // No Slack IDs are persisted in the submission ID. The signed source message also makes retries idempotent.
     const submissionId = `dm:${context.signature}`;
-    // Reproducible only with the server secret: a retry can safely show the original key, never a new invalid one.
     const privateKey = digest(config.signingSecret, 'dm-reply-key', [submissionId]);
     const useKey = body.state?.values.dm_ownership?.dm_passphrase?.selected_options?.some(option => option.value === 'passphrase') ?? false;
     let post;
@@ -67,7 +72,7 @@ export function registerDmHandlers(app: App, db: Database, config: Config) {
       post ??= await db.query.confessions.findFirst({ where: eq(confessions.submissionId, submissionId) });
       if (!post || !ownsPost(post, body.user.id, privateKey)) throw new Error('Unavailable submission');
     } catch {
-      await respond({ replace_original: false, text: 'Could not submit this confession. Please try again, or use /owl.' });
+      await reply('Could not submit this confession. Please try again, or use /owl.');
       return;
     }
     const confirmation = post.status === 'pending'
@@ -89,7 +94,7 @@ export function registerDmHandlers(app: App, db: Database, config: Config) {
         await tx.update(confessions).set({ reviewTs: review.ts, updatedAt: new Date() }).where(eq(confessions.id, pending.id));
       });
     } catch {
-      await respond({ replace_original: false, text: `Confession #${post.id} is saved, but review delivery is delayed. Moderators can recover it with /owl-revive.` });
+      await reply(`Confession #${post.id} is saved, but review delivery is delayed. Moderators can recover it with /owl-revive.`);
     }
   });
 }

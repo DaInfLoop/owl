@@ -214,8 +214,11 @@ export function registerHandlers(app: App, db: Database, config: Config) {
       }
       if (accepting) {
         const published = await client.chat.postMessage({
-          channel: confession.postChannel, text: `#${id}: ${confession.text}`,
-          blocks: [{ type: 'section', text: { type: 'plain_text', text: `#${id}: ${confession.text}` } }],
+          channel: confession.postChannel, text: `${id}: ${confession.text}`, mrkdwn: false,
+          blocks: [{ type: 'rich_text', elements: [{ type: 'rich_text_section', elements: [
+            { type: 'text', text: String(id), style: { bold: true } },
+            { type: 'text', text: `: ${confession.text}` },
+          ] }] }],
           unfurl_links: false, unfurl_media: false,
         });
         if (!published.ts) throw new Error('Slack returned no publication timestamp');

@@ -6,7 +6,7 @@ import type { Database } from '../db/client.js';
 import { confessions } from '../db/schema.js';
 import { authorCredential, hashReplyKey, newReplyKey, ownsPost } from './security.js';
 import { registerDmHandlers } from './dm.js';
-import { confirmationView, decisionBlocks, MAX_TEXT, postView, reactionView, replyView, reviewBlocks, withdrawView } from './views.js';
+import { confirmationView, decisionBlocks, escapeSlackText, MAX_TEXT, postView, reactionView, replyView, reviewBlocks, withdrawView } from './views.js';
 function slackError(error: unknown, code: string) {
   return typeof error === 'object' && error !== null && 'data' in error &&
     (error.data as { error?: string } | undefined)?.error === code;
@@ -214,7 +214,8 @@ export function registerHandlers(app: App, db: Database, config: Config) {
       }
       if (accepting) {
         const published = await client.chat.postMessage({
-          channel: confession.postChannel, text: `${id}: ${confession.text}`, mrkdwn: false,
+          channel: confession.postChannel, text: escapeSlackText(`${id}: ${confession.text}`),
+          mrkdwn: false, parse: 'none', link_names: false,
           blocks: [{ type: 'rich_text', elements: [{ type: 'rich_text_section', elements: [
             { type: 'text', text: String(id), style: { bold: true } },
             { type: 'text', text: `: ${confession.text}` },
@@ -233,7 +234,8 @@ export function registerHandlers(app: App, db: Database, config: Config) {
         await client.chat.update({ channel: config.channels.review, ts: body.message!.ts,
           text: `Post #${id} ${verdict}`, blocks: decisionBlocks(id, current.text, verdict, body.user.id, reviewedAt.getTime()) });
       });
-      await client.chat.postMessage({ channel: config.channels.log, text: `Post #${id} ${verdict} by <@${body.user.id}>.` });
+      await client.chat.postMessage({ channel: config.channels.log,
+        text: `Post #${id} ${verdict} by ${body.user.id}.`, mrkdwn: false, parse: 'none', link_names: false });
     });
   }
 
@@ -272,7 +274,8 @@ export function registerHandlers(app: App, db: Database, config: Config) {
         text: 'This decision has already changed, or the post was withdrawn. Nothing was undone.' });
       return;
     }
-    await client.chat.postMessage({ channel: config.channels.log, text: `Decision for post #${id} undone by <@${body.user.id}>; returned to pending review.` });
+    await client.chat.postMessage({ channel: config.channels.log,
+      text: `Decision for post #${id} undone by ${body.user.id}; returned to pending review.`, mrkdwn: false, parse: 'none', link_names: false });
   });
 
   app.shortcut<MessageShortcut>('reply_anon', async ({ ack, shortcut, client }) => {
@@ -310,7 +313,8 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     await ack();
     try {
       await client.chat.postMessage({ channel: confession.postChannel, thread_ts: confession.postTs!,
-        text, blocks: [{ type: 'section', text: { type: 'plain_text', text } }],
+        text: escapeSlackText(text), mrkdwn: false, parse: 'none', link_names: false,
+        blocks: [{ type: 'section', text: { type: 'plain_text', text } }],
         unfurl_links: false, unfurl_media: false });
     } catch {
       await client.chat.postEphemeral({ channel: confession.postChannel, user: body.user.id,

@@ -1,6 +1,7 @@
 import type { ModalView, KnownBlock, InputBlock } from '@slack/web-api';
 
 export const MAX_TEXT = 2800;
+export const escapeSlackText = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 const plain = (text: string) => ({ type: 'plain_text' as const, text });
 const input = (id: string, label: string, multiline = false, optional = false): InputBlock => ({
   type: 'input', block_id: id, label: plain(label), optional,

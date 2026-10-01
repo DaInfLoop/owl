@@ -52,7 +52,7 @@ export function replyView(channel: string, ts: string): ModalView {
 export function approveTwView(id: number, reviewTs: string): ModalView {
   return { type: 'modal', callback_id: 'approve_tw_view', title: plain('Approve with TW'),
     private_metadata: JSON.stringify({ id, reviewTs }), submit: plain('Approve'), close: plain('Cancel'),
-    blocks: [input('warning', 'whats the warning? (like nsfw etc)')] };
+    blocks: [input('warning', 'whats the warning? (like self harm etc)')] };
 }
 export function decisionBlocks(id: number, text: string, verdict: 'accepted' | 'rejected', userId: string, revision: number, warning?: string | null, block?: unknown): KnownBlock[] {
   return [

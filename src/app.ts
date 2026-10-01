@@ -7,7 +7,7 @@ const { App, HTTPReceiver } = bolt;
 export function createApp(config: Config, database: ReturnType<typeof createDatabase>, slackApiUrl?: string) {
   const receiver = new HTTPReceiver({
     signingSecret: config.signingSecret, endpoints: '/slack/events',
-    processBeforeResponse: false, bodyLimit: 64 * 1024,
+    processBeforeResponse: false, bodyLimit: 512 * 1024,
     customRoutes: [
       { path: '/health', method: 'GET', handler: (_req, res) => {
         res.writeHead(200, { 'content-type': 'application/json' });

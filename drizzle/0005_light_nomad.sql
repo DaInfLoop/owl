@@ -1,0 +1,1 @@
+ALTER TABLE "confessions" ADD COLUMN "content" jsonb;

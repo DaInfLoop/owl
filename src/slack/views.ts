@@ -1,6 +1,7 @@
 import type { ModalView, KnownBlock, InputBlock } from '@slack/web-api';
 
-export const MAX_TEXT = 2800;
+import { contentBlocks, contentFromText, storedContent, MAX_TEXT } from './content.js';
+export { MAX_TEXT } from './content.js';
 export const escapeSlackText = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 const plain = (text: string) => ({ type: 'plain_text' as const, text });
 const input = (id: string, label: string, multiline = false, optional = false): InputBlock => ({
@@ -8,11 +9,14 @@ const input = (id: string, label: string, multiline = false, optional = false): 
   element: { type: 'plain_text_input', action_id: id, multiline, max_length: multiline ? MAX_TEXT : 64 },
 });
 const key = () => input('key', 'Private reply key (leave blank for account hash)', false, true);
+const messageInput = (label: string, initialText = ''): InputBlock => ({
+  type: 'input', block_id: 'text', label: plain(label),
+  element: { type: 'rich_text_input', action_id: 'text',
+    ...(initialText.trim() ? { initial_value: contentFromText(initialText).block } : {}) },
+});
 export function postView(initialText = ''): ModalView {
   return { type: 'modal', callback_id: 'anon_post_view', title: plain('New anonymous post'),
-    submit: plain('Submit'), close: plain('Cancel'), blocks: [{ type: 'input', block_id: 'text', label: plain('Your message'),
-      element: { type: 'plain_text_input', action_id: 'text', multiline: true, max_length: MAX_TEXT,
-        ...(initialText ? { initial_value: initialText.slice(0, MAX_TEXT) } : {}) } }, {
+    submit: plain('Submit'), close: plain('Cancel'), blocks: [messageInput('Your message', initialText), {
       type: 'input', block_id: 'ownership', label: plain('How should we recognize your replies?'),
       element: { type: 'radio_buttons', action_id: 'mode',
         initial_option: { text: plain('Slack account hash'), value: 'account', description: plain('Automatically recognizes this account using a salted hash.') },
@@ -43,17 +47,17 @@ export function confirmationView(id: number, key: string | null): ModalView {
 export function replyView(channel: string, ts: string): ModalView {
   return { type: 'modal', callback_id: 'reply_anon_view', title: plain('Reply anonymously'),
     private_metadata: JSON.stringify({ channel, ts }), submit: plain('Reply'), close: plain('Cancel'),
-    blocks: [key(), input('text', 'Your reply', true)] };
+    blocks: [key(), messageInput('Your reply')] };
 }
 export function approveTwView(id: number, reviewTs: string): ModalView {
   return { type: 'modal', callback_id: 'approve_tw_view', title: plain('Approve with TW'),
     private_metadata: JSON.stringify({ id, reviewTs }), submit: plain('Approve'), close: plain('Cancel'),
     blocks: [input('warning', 'whats the warning? (like nsfw etc)')] };
 }
-export function decisionBlocks(id: number, text: string, verdict: 'accepted' | 'rejected', userId: string, revision: number, warning?: string | null): KnownBlock[] {
+export function decisionBlocks(id: number, text: string, verdict: 'accepted' | 'rejected', userId: string, revision: number, warning?: string | null, block?: unknown): KnownBlock[] {
   return [
-    { type: 'section', text: plain(`Anonymous post #${id}\n${text}`) },
-    { type: 'context', elements: [{ type: 'mrkdwn', text: `Post #${id} ${verdict} by <@${userId}>${warning ? ` — TW - ${escapeSlackText(warning)}` : ''}` }] },
+    ...contentBlocks(storedContent(text, block), `Anonymous post #${id}`),
+    { type: 'context', elements: [plain(`Post #${id} ${verdict} by ${userId}${warning ? ` — TW - ${warning}` : ''}`)] },
     { type: 'actions', elements: [
       { type: 'button', action_id: 'undo_review', value: `${id}:${revision}`, text: plain('Undo decision'),
         confirm: { title: plain('Undo decision?'), text: plain(verdict === 'accepted'
@@ -62,9 +66,9 @@ export function decisionBlocks(id: number, text: string, verdict: 'accepted' | '
     ] },
   ];
 }
-export function reviewBlocks(id: number, text: string): KnownBlock[] {
+export function reviewBlocks(id: number, text: string, block?: unknown): KnownBlock[] {
   return [
-    { type: 'section', text: plain(`Anonymous post #${id}\n${text}`) },
+    ...contentBlocks(storedContent(text, block), `Anonymous post #${id}`),
     { type: 'actions', elements: [
       { type: 'button', action_id: 'accept_confession', value: String(id), text: plain('Post to confessions'), style: 'primary' },
       { type: 'button', action_id: 'accept_tw', value: String(id), text: plain('Approve with TW') },

@@ -6,6 +6,7 @@ import type { Database } from '../db/client.js';
 import { confessions } from '../db/schema.js';
 import { authorCredential, hashReplyKey, newReplyKey, ownsPost } from './security.js';
 import { registerDmHandlers } from './dm.js';
+import { contentBlocks, contentFromText, inputContent, storedContent, type Content } from './content.js';
 import { approveTwView, confirmationView, decisionBlocks, escapeSlackText, MAX_TEXT, postView, reactionView, replyView, reviewBlocks, withdrawView } from './views.js';
 function slackError(error: unknown, code: string) {
   return typeof error === 'object' && error !== null && 'data' in error &&
@@ -14,7 +15,7 @@ function slackError(error: unknown, code: string) {
 
 export function registerHandlers(app: App, db: Database, config: Config) {
   registerDmHandlers(app, db, config);
-  const cleared = () => ({ status: 'rejected' as const, text: '', replyKeyHash: null,
+  const cleared = () => ({ status: 'rejected' as const, text: '', content: null, replyKeyHash: null,
     authorHash: null, authorSalt: null, updatedAt: new Date() });
   const published = (channel: string, ts: string) => db.query.confessions.findFirst({
     where: and(eq(confessions.postChannel, channel), eq(confessions.postTs, ts), eq(confessions.status, 'accepted')),
@@ -90,7 +91,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
           eq(confessions.status, 'pending'), isNull(confessions.reviewTs))).for('update', { skipLocked: true });
         if (!post) return;
         const review = await client.chat.postMessage({ channel: config.channels.review,
-          text: `Anonymous post #${post.id}`, blocks: reviewBlocks(post.id, post.text), unfurl_links: false, unfurl_media: false });
+          text: `Anonymous post #${post.id}`, blocks: reviewBlocks(post.id, post.text, post.content), unfurl_links: false, unfurl_media: false });
         if (!review.ts) throw new Error('Slack returned no review timestamp');
         await tx.update(confessions).set({ reviewTs: review.ts, updatedAt: new Date() }).where(eq(confessions.id, post.id));
         count++;
@@ -159,9 +160,10 @@ export function registerHandlers(app: App, db: Database, config: Config) {
   });
 
   app.view('anon_post_view', async ({ ack, view, body, client }) => {
-    const text = view.state.values.text?.text?.value?.trim() ?? '';
-    if (!text || text.length > MAX_TEXT) {
-      await ack({ response_action: 'errors', errors: { text: `Enter between 1 and ${MAX_TEXT} characters.` } });
+    let content: Content;
+    try { content = inputContent(view.state.values.text?.text); }
+    catch {
+      await ack({ response_action: 'errors', errors: { text: `Use supported text, links, channels, and emoji (1–${MAX_TEXT} characters).` } });
       return;
     }
     const mode = view.state.values.ownership?.mode?.selected_option?.value;
@@ -173,7 +175,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     let confession;
     try {
       [confession] = await db.insert(confessions).values({
-        submissionId: view.id, text,
+        submissionId: view.id, text: content.text, content: content.block,
         ...(key ? { replyKeyHash: hashReplyKey(key, body.user.id) } : authorCredential(body.user.id)),
         postChannel: config.channels.post,
       }).onConflictDoNothing({ target: confessions.submissionId }).returning();
@@ -188,7 +190,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     await ack({ response_action: 'update', view: confirmationView(confession.id, key) });
     const review = await client.chat.postMessage({
       channel: config.channels.review, text: `Anonymous post #${confession.id}`,
-      blocks: reviewBlocks(confession.id, text), unfurl_links: false, unfurl_media: false,
+      blocks: reviewBlocks(confession.id, content.text, content.block), unfurl_links: false, unfurl_media: false,
     });
     if (!review.ts) throw new Error('Slack returned no review timestamp');
     await db.update(confessions).set({ reviewTs: review.ts, updatedAt: new Date() })
@@ -205,25 +207,24 @@ export function registerHandlers(app: App, db: Database, config: Config) {
           eq(confessions.reviewTs, reviewTs))).returning();
       if (!confession) return false;
       if (accepting) {
-        const topText = warning ? `TW - ${warning}` : confession.text;
+        const content = storedContent(confession.text, confession.content);
+        const top = warning ? contentFromText(`TW - ${warning}`) : content;
         const published = await client.chat.postMessage({
-          channel: confession.postChannel, text: escapeSlackText(`${id}: ${topText}`),
+          channel: confession.postChannel, text: escapeSlackText(`${id}: ${top.text}`),
           mrkdwn: false, parse: 'none', link_names: false,
-          blocks: [{ type: 'section', text: {
-            type: 'mrkdwn', text: `*${id}*: ${escapeSlackText(topText)}`, verbatim: true,
-          } }],
+          blocks: contentBlocks(top, String(id)),
           unfurl_links: false, unfurl_media: false,
         });
         if (!published.ts) throw new Error('Slack returned no publication timestamp');
         await db.update(confessions).set({ postTs: published.ts }).where(eq(confessions.id, id));
         let contentTs: string | null = null;
         if (warning) {
-          const content = await client.chat.postMessage({ channel: confession.postChannel, thread_ts: published.ts,
-            reply_broadcast: false, text: escapeSlackText(confession.text), mrkdwn: false, parse: 'none', link_names: false,
-            blocks: [{ type: 'section', text: { type: 'mrkdwn', text: escapeSlackText(confession.text), verbatim: true } }],
+          const reply = await client.chat.postMessage({ channel: confession.postChannel, thread_ts: published.ts,
+            reply_broadcast: false, text: escapeSlackText(content.text), mrkdwn: false, parse: 'none', link_names: false,
+            blocks: contentBlocks(content),
             unfurl_links: false, unfurl_media: false });
-          if (!content.ts) throw new Error('Slack returned no content timestamp');
-          contentTs = content.ts;
+          if (!reply.ts) throw new Error('Slack returned no content timestamp');
+          contentTs = reply.ts;
         }
         await db.update(confessions).set({ status: 'accepted', contentTs, postTs: published.ts, updatedAt: reviewedAt })
           .where(eq(confessions.id, id));
@@ -234,7 +235,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
           eq(confessions.status, verdict), eq(confessions.updatedAt, reviewedAt))).for('update');
         if (!current?.text) return;
         await client.chat.update({ channel: config.channels.review, ts: reviewTs,
-          text: `Post #${id} ${verdict}`, blocks: decisionBlocks(id, current.text, verdict, userId, reviewedAt.getTime(), warning) });
+          text: `Post #${id} ${verdict}`, blocks: decisionBlocks(id, current.text, verdict, userId, reviewedAt.getTime(), warning, current.content) });
       });
       await client.chat.postMessage({ channel: config.channels.log,
         text: `Post #${id} ${verdict} by ${userId}.${warning ? ` TW - ${warning}` : ''}`, mrkdwn: false, parse: 'none', link_names: false });
@@ -314,7 +315,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
         await tx.update(confessions).set({ status: 'pending', postTs: null, contentTs: null, warning: null, updatedAt: new Date() })
           .where(eq(confessions.id, post.id));
         await client.chat.update({ channel: config.channels.review, ts: body.message!.ts,
-          text: `Anonymous post #${post.id} awaiting review`, blocks: reviewBlocks(post.id, post.text) });
+          text: `Anonymous post #${post.id} awaiting review`, blocks: reviewBlocks(post.id, post.text, post.content) });
         undone = true;
       });
     } catch {
@@ -339,9 +340,10 @@ export function registerHandlers(app: App, db: Database, config: Config) {
 
   app.view('reply_anon_view', async ({ ack, view, body, client }) => {
     const key = view.state.values.key?.key?.value?.trim() ?? '';
-    const text = view.state.values.text?.text?.value?.trim() ?? '';
-    if (!text || text.length > MAX_TEXT) {
-      await ack({ response_action: 'errors', errors: { text: `Enter between 1 and ${MAX_TEXT} characters.` } });
+    let content: Content;
+    try { content = inputContent(view.state.values.text?.text); }
+    catch {
+      await ack({ response_action: 'errors', errors: { text: `Use supported text, links, channels, and emoji (1–${MAX_TEXT} characters).` } });
       return;
     }
     let context: { channel: string; ts: string };
@@ -366,8 +368,8 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     await ack();
     try {
       await client.chat.postMessage({ channel: confession.postChannel, thread_ts: confession.postTs!,
-        text: escapeSlackText(text), mrkdwn: false, parse: 'none', link_names: false,
-        blocks: [{ type: 'section', text: { type: 'mrkdwn', text: escapeSlackText(text), verbatim: true } }],
+        text: escapeSlackText(content.text), mrkdwn: false, parse: 'none', link_names: false,
+        blocks: contentBlocks(content),
         unfurl_links: false, unfurl_media: false });
     } catch {
       await client.chat.postEphemeral({ channel: confession.postChannel, user: body.user.id,

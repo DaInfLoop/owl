@@ -209,10 +209,9 @@ export function registerHandlers(app: App, db: Database, config: Config) {
         const published = await client.chat.postMessage({
           channel: confession.postChannel, text: escapeSlackText(`${id}: ${topText}`),
           mrkdwn: false, parse: 'none', link_names: false,
-          blocks: [{ type: 'rich_text', elements: [{ type: 'rich_text_section', elements: [
-            { type: 'text', text: String(id), style: { bold: true } },
-            { type: 'text', text: `: ${topText}` },
-          ] }] }],
+          blocks: [{ type: 'section', text: {
+            type: 'mrkdwn', text: `*${id}*: ${escapeSlackText(topText)}`, verbatim: true,
+          } }],
           unfurl_links: false, unfurl_media: false,
         });
         if (!published.ts) throw new Error('Slack returned no publication timestamp');
@@ -221,7 +220,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
         if (warning) {
           const content = await client.chat.postMessage({ channel: confession.postChannel, thread_ts: published.ts,
             reply_broadcast: false, text: escapeSlackText(confession.text), mrkdwn: false, parse: 'none', link_names: false,
-            blocks: [{ type: 'section', text: { type: 'plain_text', text: confession.text } }],
+            blocks: [{ type: 'section', text: { type: 'plain_text', text: confession.text, emoji: true } }],
             unfurl_links: false, unfurl_media: false });
           if (!content.ts) throw new Error('Slack returned no content timestamp');
           contentTs = content.ts;
@@ -368,7 +367,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     try {
       await client.chat.postMessage({ channel: confession.postChannel, thread_ts: confession.postTs!,
         text: escapeSlackText(text), mrkdwn: false, parse: 'none', link_names: false,
-        blocks: [{ type: 'section', text: { type: 'plain_text', text } }],
+        blocks: [{ type: 'section', text: { type: 'plain_text', text, emoji: true } }],
         unfurl_links: false, unfurl_media: false });
     } catch {
       await client.chat.postEphemeral({ channel: confession.postChannel, user: body.user.id,

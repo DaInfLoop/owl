@@ -48,7 +48,7 @@ export function replyView(channel: string, ts: string): ModalView {
 export function decisionBlocks(id: number, text: string, verdict: 'accepted' | 'rejected', userId: string, revision: number): KnownBlock[] {
   return [
     { type: 'section', text: plain(`Anonymous post #${id}\n${text}`) },
-    { type: 'context', elements: [plain(`Post #${id} ${verdict} by ${userId}`)] },
+    { type: 'context', elements: [{ type: 'mrkdwn', text: `Post #${id} ${verdict} by <@${userId}>` }] },
     { type: 'actions', elements: [
       { type: 'button', action_id: 'undo_review', value: `${id}:${revision}`, text: plain('Undo decision'),
         confirm: { title: plain('Undo decision?'), text: plain(verdict === 'accepted'

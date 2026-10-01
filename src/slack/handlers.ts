@@ -298,7 +298,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     if (parts.length !== 2 || !parts.every(part => /^\d+$/.test(part))) return;
     const [id, revision] = parts.map(Number);
     if (!Number.isSafeInteger(id) || !id || !Number.isSafeInteger(revision)) return;
-    let undone = false;
+    let undone: 'unapproved' | 'unrejected' | null = null;
     try {
       await db.transaction(async (tx) => {
         const [post] = await tx.select().from(confessions).where(and(eq(confessions.id, id!),
@@ -317,7 +317,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
           .where(eq(confessions.id, post.id));
         await client.chat.update({ channel: config.channels.review, ts: body.message!.ts,
           text: `Anonymous post #${post.id} awaiting review`, blocks: reviewBlocks(post.id, post.text, post.content) });
-        undone = true;
+        undone = post.status === 'accepted' ? 'unapproved' : 'unrejected';
       });
     } catch {
       await respond({ response_type: 'ephemeral', replace_original: false,
@@ -329,6 +329,8 @@ export function registerHandlers(app: App, db: Database, config: Config) {
         text: 'This decision has already changed, or the post was withdrawn. Nothing was undone.' });
       return;
     }
+    await client.chat.postMessage({ channel: config.channels.log,
+      text: `Confession *#${id}* was *${undone}*`, mrkdwn: true, parse: 'none', link_names: false });
   });
 
   app.shortcut<MessageShortcut>('reply_anon', async ({ ack, shortcut, client }) => {

@@ -34,9 +34,10 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     await db.update(confessions).set(cleared()).where(eq(confessions.id, id));
     await Promise.all([
       ...(claimed.reviewTs ? [client.chat.update({ channel: config.channels.review, ts: claimed.reviewTs,
-        text: `Post #${id} withdrawn by its author`, blocks: [{ type: 'section', text: {
-          type: 'plain_text', text: `Post #${id} withdrawn by its author`,
-        } }] })] : []),
+        text: `Post #${id} self-rejected`, blocks: [
+          ...contentBlocks(storedContent(claimed.text, claimed.content), `Anonymous post #${id}`),
+          { type: 'context', elements: [{ type: 'plain_text', text: `Post #${id} self-rejected by its author` }] },
+        ] })] : []),
       client.chat.postMessage({ channel: config.channels.log, text: `Post #${id} withdrawn by its author.` }),
     ]);
     return true;

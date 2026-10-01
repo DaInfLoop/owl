@@ -61,6 +61,17 @@ function inline(value: unknown): RichTextElement {
       if (!safeURL(url)) return { type: 'text', text: text ?? url, ...styled };
       return { type: 'link', url, ...(text === undefined ? {} : { text }), ...styled };
     }
+    case 'message_mention': {
+      const channel = id(node.channel_id, 'CG');
+      const timestamp = string(node.message_ts);
+      if (!/^\d+\.\d{6}$/.test(timestamp)) return invalid();
+      const thread = node.thread_ts === undefined ? undefined : string(node.thread_ts);
+      if (thread !== undefined && !/^\d+\.\d{6}$/.test(thread)) return invalid();
+      const url = node.url === undefined
+        ? `https://app.slack.com/archives/${channel}/p${timestamp.replace('.', '')}${thread === undefined ? '' : `?thread_ts=${thread}&cid=${channel}`}`
+        : string(node.url);
+      return inline({ type: 'link', url, text: node.text, style: formatting });
+    }
     case 'emoji': {
       const name = string(node.name);
       if (!/^[a-zA-Z0-9_+\-]+$/.test(name)) return invalid();

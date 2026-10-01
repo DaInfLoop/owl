@@ -199,11 +199,15 @@ export function storedContent(text: string, block: unknown): Content {
   return block == null ? contentFromText(text) : contentFromBlocks(block);
 }
 
-export function contentBlocks(content: Content, heading?: string): RichTextBlock[] {
+export function contentBlocks(content: Content, heading?: string, inlineHeading = false): RichTextBlock[] {
   const { block } = contentFromBlocks(content.block);
   if (heading !== undefined) {
     if (typeof heading !== 'string' || !heading.trim() || heading.length > MAX_TEXT) return invalid();
-    block.elements.unshift({ type: 'rich_text_section', elements: [{ type: 'text', text: heading, style: { bold: true } }] });
+    const prefix: RichTextElement[] = [{ type: 'text', text: heading, style: { bold: true } }];
+    if (inlineHeading) prefix.push({ type: 'text', text: ': ' });
+    const first = block.elements[0];
+    if (inlineHeading && first?.type === 'rich_text_section') first.elements.unshift(...prefix);
+    else block.elements.unshift({ type: 'rich_text_section', elements: prefix });
   }
   boundedJSON(block);
   return [block];

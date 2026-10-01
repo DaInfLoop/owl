@@ -213,7 +213,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
         const published = await client.chat.postMessage({
           channel: confession.postChannel, text: escapeSlackText(`${id}: ${top.text}`),
           mrkdwn: false, parse: 'none', link_names: false,
-          blocks: contentBlocks(top, String(id)),
+          blocks: contentBlocks(top, String(id), true),
           unfurl_links: false, unfurl_media: false,
         });
         if (!published.ts) throw new Error('Slack returned no publication timestamp');

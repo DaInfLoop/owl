@@ -220,7 +220,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
         if (warning) {
           const content = await client.chat.postMessage({ channel: confession.postChannel, thread_ts: published.ts,
             reply_broadcast: false, text: escapeSlackText(confession.text), mrkdwn: false, parse: 'none', link_names: false,
-            blocks: [{ type: 'section', text: { type: 'plain_text', text: confession.text, emoji: true } }],
+            blocks: [{ type: 'section', text: { type: 'mrkdwn', text: escapeSlackText(confession.text), verbatim: true } }],
             unfurl_links: false, unfurl_media: false });
           if (!content.ts) throw new Error('Slack returned no content timestamp');
           contentTs = content.ts;
@@ -367,7 +367,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     try {
       await client.chat.postMessage({ channel: confession.postChannel, thread_ts: confession.postTs!,
         text: escapeSlackText(text), mrkdwn: false, parse: 'none', link_names: false,
-        blocks: [{ type: 'section', text: { type: 'plain_text', text, emoji: true } }],
+        blocks: [{ type: 'section', text: { type: 'mrkdwn', text: escapeSlackText(text), verbatim: true } }],
         unfurl_links: false, unfurl_media: false });
     } catch {
       await client.chat.postEphemeral({ channel: confession.postChannel, user: body.user.id,

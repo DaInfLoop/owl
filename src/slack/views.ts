@@ -57,7 +57,7 @@ export function approveTwView(id: number, reviewTs: string): ModalView {
 export function decisionBlocks(id: number, text: string, verdict: 'accepted' | 'rejected', userId: string, revision: number, warning?: string | null, block?: unknown): KnownBlock[] {
   return [
     ...contentBlocks(storedContent(text, block), `Anonymous post #${id}`),
-    { type: 'context', elements: [plain(`Post #${id} ${verdict} by ${userId}${warning ? ` — TW - ${warning}` : ''}`)] },
+    { type: 'context', elements: [{ type: 'mrkdwn', text: `Post #${id} ${verdict} by <@${userId}>${warning ? ` — TW - ${escapeSlackText(warning)}` : ''}` }] },
     { type: 'actions', elements: [
       { type: 'button', action_id: 'undo_review', value: `${id}:${revision}`, text: plain('Undo decision'),
         confirm: { title: plain('Undo decision?'), text: plain(verdict === 'accepted'

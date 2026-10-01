@@ -38,7 +38,6 @@ export function registerHandlers(app: App, db: Database, config: Config) {
           ...contentBlocks(storedContent(claimed.text, claimed.content), `Anonymous post #${id}`),
           { type: 'context', elements: [{ type: 'plain_text', text: `Post #${id} self-rejected by its author` }] },
         ] })] : []),
-      client.chat.postMessage({ channel: config.channels.log, text: `Post #${id} withdrawn by its author.` }),
     ]);
     return true;
   }
@@ -238,8 +237,9 @@ export function registerHandlers(app: App, db: Database, config: Config) {
         await client.chat.update({ channel: config.channels.review, ts: reviewTs,
           text: `Post #${id} ${verdict}`, blocks: decisionBlocks(id, current.text, verdict, userId, reviewedAt.getTime(), warning, current.content) });
       });
+      const logVerdict = accepting ? (postChannel === config.channels.meta ? 'approved for meta' : 'approved') : 'rejected';
       await client.chat.postMessage({ channel: config.channels.log,
-        text: `Post #${id} ${verdict} by ${userId}.${warning ? ` TW - ${warning}` : ''}`, mrkdwn: false, parse: 'none', link_names: false });
+        text: `Confession *#${id}* was *${logVerdict}*`, mrkdwn: true, parse: 'none', link_names: false });
       return true;
   }
 
@@ -329,8 +329,6 @@ export function registerHandlers(app: App, db: Database, config: Config) {
         text: 'This decision has already changed, or the post was withdrawn. Nothing was undone.' });
       return;
     }
-    await client.chat.postMessage({ channel: config.channels.log,
-      text: `Decision for post #${id} undone by ${body.user.id}; returned to pending review.`, mrkdwn: false, parse: 'none', link_names: false });
   });
 
   app.shortcut<MessageShortcut>('reply_anon', async ({ ack, shortcut, client }) => {

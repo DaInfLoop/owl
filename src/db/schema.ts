@@ -12,6 +12,8 @@ export const confessions = pgTable('confessions', {
   postChannel: text('post_channel').notNull(),
   reviewTs: text('review_ts'),
   postTs: text('post_ts'),
+  warning: text('warning'),
+  contentTs: text('content_ts'),
   status: confessionStatus('status').notNull().default('pending'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

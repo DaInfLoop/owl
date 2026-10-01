@@ -45,10 +45,15 @@ export function replyView(channel: string, ts: string): ModalView {
     private_metadata: JSON.stringify({ channel, ts }), submit: plain('Reply'), close: plain('Cancel'),
     blocks: [key(), input('text', 'Your reply', true)] };
 }
-export function decisionBlocks(id: number, text: string, verdict: 'accepted' | 'rejected', userId: string, revision: number): KnownBlock[] {
+export function approveTwView(id: number, reviewTs: string): ModalView {
+  return { type: 'modal', callback_id: 'approve_tw_view', title: plain('Approve with TW'),
+    private_metadata: JSON.stringify({ id, reviewTs }), submit: plain('Approve'), close: plain('Cancel'),
+    blocks: [input('warning', 'whats the warning? (like nsfw etc)')] };
+}
+export function decisionBlocks(id: number, text: string, verdict: 'accepted' | 'rejected', userId: string, revision: number, warning?: string | null): KnownBlock[] {
   return [
     { type: 'section', text: plain(`Anonymous post #${id}\n${text}`) },
-    { type: 'context', elements: [{ type: 'mrkdwn', text: `Post #${id} ${verdict} by <@${userId}>` }] },
+    { type: 'context', elements: [{ type: 'mrkdwn', text: `Post #${id} ${verdict} by <@${userId}>${warning ? ` — TW - ${escapeSlackText(warning)}` : ''}` }] },
     { type: 'actions', elements: [
       { type: 'button', action_id: 'undo_review', value: `${id}:${revision}`, text: plain('Undo decision'),
         confirm: { title: plain('Undo decision?'), text: plain(verdict === 'accepted'
@@ -62,6 +67,7 @@ export function reviewBlocks(id: number, text: string): KnownBlock[] {
     { type: 'section', text: plain(`Anonymous post #${id}\n${text}`) },
     { type: 'actions', elements: [
       { type: 'button', action_id: 'accept_confession', value: String(id), text: plain('Post to confessions'), style: 'primary' },
+      { type: 'button', action_id: 'accept_tw', value: String(id), text: plain('Approve with TW') },
       { type: 'button', action_id: 'accept_meta', value: String(id), text: plain('Post to #meta') },
       { type: 'button', action_id: 'reject_confession', value: String(id), text: plain('Reject'), style: 'danger' },
     ] },

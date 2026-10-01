@@ -6,7 +6,7 @@ import type { Database } from '../db/client.js';
 import { confessions } from '../db/schema.js';
 import { authorCredential, hashReplyKey, newReplyKey, ownsPost } from './security.js';
 import { registerDmHandlers } from './dm.js';
-import { confirmationView, decisionBlocks, escapeSlackText, MAX_TEXT, postView, reactionView, replyView, reviewBlocks, withdrawView } from './views.js';
+import { approveTwView, confirmationView, decisionBlocks, escapeSlackText, MAX_TEXT, postView, reactionView, replyView, reviewBlocks, withdrawView } from './views.js';
 function slackError(error: unknown, code: string) {
   return typeof error === 'object' && error !== null && 'data' in error &&
     (error.data as { error?: string } | undefined)?.error === code;
@@ -25,8 +25,9 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     const [claimed] = await db.update(confessions).set({ status: 'withdrawing', updatedAt: new Date() })
       .where(and(eq(confessions.id, id), inArray(confessions.status, ['pending', 'accepted', 'withdrawing', 'rejected']))).returning();
     if (!claimed) return false;
-    if (claimed.postTs) {
-      try { await client.chat.delete({ channel: claimed.postChannel, ts: claimed.postTs }); }
+    for (const ts of [claimed.contentTs, claimed.postTs]) {
+      if (!ts) continue;
+      try { await client.chat.delete({ channel: claimed.postChannel, ts }); }
       catch (error) { if (!slackError(error, 'message_not_found')) throw error; }
     }
     await db.update(confessions).set(cleared()).where(eq(confessions.id, id));
@@ -194,36 +195,38 @@ export function registerHandlers(app: App, db: Database, config: Config) {
       .where(eq(confessions.id, confession.id));
   });
 
-  for (const actionId of ['accept_confession', 'accept_meta', 'reject_confession'] as const) {
-    app.action<BlockAction<ButtonAction>>(actionId, async ({ ack, body, action, client, respond }) => {
-      await ack();
-      if (body.channel?.id !== config.channels.review || !body.message?.ts) return;
-      const id = Number(action.value);
-      if (!Number.isSafeInteger(id) || id < 1) return;
-      const accepting = actionId !== 'reject_confession';
-      const postChannel = actionId === 'accept_meta' ? config.channels.meta : config.channels.post;
+  async function decide(id: number, reviewTs: string, userId: string, accepting: boolean,
+    postChannel: string, client: WebClient, warning: string | null = null) {
       const reviewedAt = new Date();
       const [confession] = await db.update(confessions)
         .set({ status: accepting ? 'publishing' : 'rejected',
-          ...(accepting ? { postChannel } : {}), updatedAt: reviewedAt })
+          ...(accepting ? { postChannel, warning } : {}), updatedAt: reviewedAt })
         .where(and(eq(confessions.id, id), eq(confessions.status, 'pending'),
-          eq(confessions.reviewTs, body.message.ts))).returning();
-      if (!confession) {
-        await respond({ response_type: 'ephemeral', replace_original: false, text: 'this has already been reviewed! thank u for ur efforts anyway! its the spirit that counts' });
-        return;
-      }
+          eq(confessions.reviewTs, reviewTs))).returning();
+      if (!confession) return false;
       if (accepting) {
+        const topText = warning ? `TW - ${warning}` : confession.text;
         const published = await client.chat.postMessage({
-          channel: confession.postChannel, text: escapeSlackText(`${id}: ${confession.text}`),
+          channel: confession.postChannel, text: escapeSlackText(`${id}: ${topText}`),
           mrkdwn: false, parse: 'none', link_names: false,
           blocks: [{ type: 'rich_text', elements: [{ type: 'rich_text_section', elements: [
             { type: 'text', text: String(id), style: { bold: true } },
-            { type: 'text', text: `: ${confession.text}` },
+            { type: 'text', text: `: ${topText}` },
           ] }] }],
           unfurl_links: false, unfurl_media: false,
         });
         if (!published.ts) throw new Error('Slack returned no publication timestamp');
-        await db.update(confessions).set({ status: 'accepted', postTs: published.ts, updatedAt: reviewedAt })
+        await db.update(confessions).set({ postTs: published.ts }).where(eq(confessions.id, id));
+        let contentTs: string | null = null;
+        if (warning) {
+          const content = await client.chat.postMessage({ channel: confession.postChannel, thread_ts: published.ts,
+            reply_broadcast: false, text: escapeSlackText(confession.text), mrkdwn: false, parse: 'none', link_names: false,
+            blocks: [{ type: 'section', text: { type: 'plain_text', text: confession.text } }],
+            unfurl_links: false, unfurl_media: false });
+          if (!content.ts) throw new Error('Slack returned no content timestamp');
+          contentTs = content.ts;
+        }
+        await db.update(confessions).set({ status: 'accepted', contentTs, postTs: published.ts, updatedAt: reviewedAt })
           .where(eq(confessions.id, id));
       }
       const verdict = accepting ? 'accepted' : 'rejected';
@@ -231,13 +234,61 @@ export function registerHandlers(app: App, db: Database, config: Config) {
         const [current] = await tx.select().from(confessions).where(and(eq(confessions.id, id),
           eq(confessions.status, verdict), eq(confessions.updatedAt, reviewedAt))).for('update');
         if (!current?.text) return;
-        await client.chat.update({ channel: config.channels.review, ts: body.message!.ts,
-          text: `Post #${id} ${verdict}`, blocks: decisionBlocks(id, current.text, verdict, body.user.id, reviewedAt.getTime()) });
+        await client.chat.update({ channel: config.channels.review, ts: reviewTs,
+          text: `Post #${id} ${verdict}`, blocks: decisionBlocks(id, current.text, verdict, userId, reviewedAt.getTime(), warning) });
       });
       await client.chat.postMessage({ channel: config.channels.log,
-        text: `Post #${id} ${verdict} by ${body.user.id}.`, mrkdwn: false, parse: 'none', link_names: false });
+        text: `Post #${id} ${verdict} by ${userId}.${warning ? ` TW - ${warning}` : ''}`, mrkdwn: false, parse: 'none', link_names: false });
+      return true;
+  }
+
+  for (const actionId of ['accept_confession', 'accept_meta', 'reject_confession'] as const) {
+    app.action<BlockAction<ButtonAction>>(actionId, async ({ ack, body, action, client, respond }) => {
+      await ack();
+      if (body.channel?.id !== config.channels.review || !body.message?.ts) return;
+      const id = Number(action.value);
+      if (!Number.isSafeInteger(id) || id < 1) return;
+      if (!await decide(id, body.message.ts, body.user.id, actionId !== 'reject_confession',
+        actionId === 'accept_meta' ? config.channels.meta : config.channels.post, client)) {
+        await respond({ response_type: 'ephemeral', replace_original: false,
+          text: 'this has already been reviewed! thank u for ur efforts anyway! its the spirit that counts' });
+      }
     });
   }
+
+  app.action<BlockAction<ButtonAction>>('accept_tw', async ({ ack, body, action, client }) => {
+    await ack();
+    if (body.channel?.id !== config.channels.review || !body.message?.ts) return;
+    const id = Number(action.value);
+    if (!Number.isSafeInteger(id) || id < 1) return;
+    await client.views.open({ trigger_id: body.trigger_id, view: approveTwView(id, body.message.ts) });
+  });
+
+  app.view('approve_tw_view', async ({ ack, body, view, client }) => {
+    const warning = view.state.values.warning?.warning?.value?.trim() ?? '';
+    if (!warning || warning.length > 64) {
+      await ack({ response_action: 'errors', errors: { warning: 'Enter a warning between 1 and 64 characters.' } });
+      return;
+    }
+    let context: { id: number; reviewTs: string };
+    try {
+      context = JSON.parse(view.private_metadata);
+      if (!context || !Number.isSafeInteger(context.id) || context.id < 1 || typeof context.reviewTs !== 'string' || !context.reviewTs) throw new Error('Invalid context');
+    } catch {
+      await ack({ response_action: 'errors', errors: { warning: 'Reopen this form from the review message.' } });
+      return;
+    }
+    await ack();
+    try {
+      const accepted = await decide(context.id, context.reviewTs, body.user.id, true, config.channels.post, client, warning);
+      if (accepted) return;
+      await client.chat.postEphemeral({ channel: config.channels.review, user: body.user.id,
+        text: 'This post has already been reviewed or withdrawn. Nothing was published.' });
+    } catch {
+      await client.chat.postEphemeral({ channel: config.channels.review, user: body.user.id,
+        text: 'TW approval could not be confirmed. Check the destination thread before retrying; delivery may be partial.' });
+    }
+  });
 
   app.action<BlockAction<ButtonAction>>('undo_review', async ({ ack, body, action, client, respond }) => {
     await ack();
@@ -255,10 +306,13 @@ export function registerHandlers(app: App, db: Database, config: Config) {
           !post.text || (!post.replyKeyHash && (!post.authorHash || !post.authorSalt))) return;
         if (post.status === 'accepted') {
           if (!post.postTs) throw new Error('No publication timestamp');
-          try { await client.chat.delete({ channel: post.postChannel, ts: post.postTs }); }
-          catch (error) { if (!slackError(error, 'message_not_found')) throw error; }
+          for (const ts of [post.contentTs, post.postTs]) {
+            if (!ts) continue;
+            try { await client.chat.delete({ channel: post.postChannel, ts }); }
+            catch (error) { if (!slackError(error, 'message_not_found')) throw error; }
+          }
         }
-        await tx.update(confessions).set({ status: 'pending', postTs: null, updatedAt: new Date() })
+        await tx.update(confessions).set({ status: 'pending', postTs: null, contentTs: null, warning: null, updatedAt: new Date() })
           .where(eq(confessions.id, post.id));
         await client.chat.update({ channel: config.channels.review, ts: body.message!.ts,
           text: `Anonymous post #${post.id} awaiting review`, blocks: reviewBlocks(post.id, post.text) });

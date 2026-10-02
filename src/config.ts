@@ -9,12 +9,17 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env) {
     return value;
   }
   return {
-    databaseUrl: required('DATABASE_URL'),
-    token: required('SLACK_BOT_TOKEN'),
-    signingSecret: required('SLACK_SIGNING_SECRET'),
-    channels: { post: required('POST_CHANNEL'), meta: required('META_CHANNEL'), review: required('REVIEW_CHANNEL'), log: required('LOG_CHANNEL') },
-    port: integer('PORT', 8080, 65535),
-    poolSize: integer('DB_POOL_SIZE', 10, 100),
+    databaseUrl: required("DATABASE_URL"),
+    token: required("SLACK_BOT_TOKEN"),
+    signingSecret: required("SLACK_SIGNING_SECRET"),
+    channels: {
+      post: required("POST_CHANNEL"),
+      meta: required("META_CHANNEL"),
+      review: required("REVIEW_CHANNEL"),
+      log: required("LOG_CHANNEL"),
+    },
+    port: integer("PORT", 8080, 65535),
+    poolSize: integer("DB_POOL_SIZE", 10, 100),
   };
 }
 export type Config = ReturnType<typeof readConfig>;

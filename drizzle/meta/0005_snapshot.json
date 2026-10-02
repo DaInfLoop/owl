@@ -143,16 +143,12 @@
         "confessions_submission_id_unique": {
           "name": "confessions_submission_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "submission_id"
-          ]
+          "columns": ["submission_id"]
         },
         "confessions_reply_key_hash_unique": {
           "name": "confessions_reply_key_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "reply_key_hash"
-          ]
+          "columns": ["reply_key_hash"]
         }
       },
       "policies": {},
@@ -169,13 +165,7 @@
     "public.confession_status": {
       "name": "confession_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "publishing",
-        "accepted",
-        "withdrawing",
-        "rejected"
-      ]
+      "values": ["pending", "publishing", "accepted", "withdrawing", "rejected"]
     }
   },
   "schemas": {},

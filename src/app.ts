@@ -63,7 +63,7 @@ export function createApp(
     }
   });
   async function drain() {
-    while (active.size) await Promise.allSettled([...active]);
+    while (active.size) await Promise.allSettled(active);
   }
   app.error(async () => {
     console.error("slack broke, check logs?");

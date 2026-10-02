@@ -76,8 +76,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
       }
     }
     await db.update(confessions).set(cleared()).where(eq(confessions.id, id));
-    await Promise.all([
-      ...(claimed.reviewTs
+    await Promise.all((claimed.reviewTs
         ? [
             client.chat.update({
               channel: config.channels.review,
@@ -97,8 +96,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
               ],
             }),
           ]
-        : []),
-    ]);
+        : []));
     return true;
   }
 
@@ -226,7 +224,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
     const q = options.value.trim().replaceAll(":", "").toLowerCase();
     const names = emojis.filter((name) => name.includes(q));
     // emoji
-    if (/^[a-z0-9_+\-]{1,64}$/.test(q) && !names.includes(q)) names.unshift(q);
+    if (/^[a-z0-9_+-]{1,64}$/.test(q) && !names.includes(q)) names.unshift(q);
     await ack({
       options: names
         .slice(0, 100)
@@ -260,7 +258,7 @@ export function registerHandlers(app: App, db: Database, config: Config) {
       });
       return;
     }
-    if (!/^[a-zA-Z0-9_+\-]{1,64}$/.test(emoji)) {
+    if (!/^[a-zA-Z0-9_+-]{1,64}$/.test(emoji)) {
       await ack({ response_action: "errors", errors: { emoji: "Choose an emoji." } });
       return;
     }

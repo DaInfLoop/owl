@@ -4,7 +4,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env) {
     if (!value) throw new Error(`yo i need ${name}`);
     return value;
   }
-  function integer(name: string, fallback: number, max: number) {
+  function integer(name: string, fallback: number) {
     const value = Number(env[name] ?? fallback);
     return value;
   }
@@ -18,8 +18,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env) {
       review: required("REVIEW_CHANNEL"),
       log: required("LOG_CHANNEL"),
     },
-    port: integer("PORT", 8080, 65535),
-    poolSize: integer("DB_POOL_SIZE", 10, 100),
+    port: integer("PORT", 8080),
+    poolSize: integer("DB_POOL_SIZE", 10),
   };
 }
 export type Config = ReturnType<typeof readConfig>;

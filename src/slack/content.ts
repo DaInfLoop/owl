@@ -36,6 +36,7 @@ function boundedJSON(value: unknown): void {
   }
 }
 function safeURL(value: string): boolean {
+  // oxlint-disable-next-line no-control-regex
   if (/[\s\x00-\x1f\x7f<>\\]/u.test(value)) return false;
   if (!/^(?:https?:\/\/|mailto:)/i.test(value)) return false;
   try {
@@ -91,7 +92,7 @@ function inline(value: unknown): RichTextElement {
     }
     case "emoji": {
       const name = string(node.name);
-      if (!/^[a-zA-Z0-9_+\-]+$/.test(name)) return invalid();
+      if (!/^[a-zA-Z0-9_+-]+$/.test(name)) return invalid();
       const unicode = node.unicode === undefined ? undefined : string(node.unicode);
       if (unicode !== undefined && !/^[0-9a-f]{1,6}(?:-[0-9a-f]{1,6})*$/i.test(unicode))
         return invalid();
@@ -243,7 +244,7 @@ export function contentFromText(text: string): Content {
     if (last?.type === "text") last.text += value;
     else elements.push({ type: "text", text: value });
   };
-  const tokens = /<([^<>]+)>|:([a-zA-Z0-9_+\-]+):|(?:https?:\/\/|mailto:)[^\s<>]+/g;
+  const tokens = /<([^<>]+)>|:([a-zA-Z0-9_+-]+):|(?:https?:\/\/|mailto:)[^\s<>]+/g;
   let cursor = 0;
   for (const match of text.matchAll(tokens)) {
     append(decode(text.slice(cursor, match.index)));
